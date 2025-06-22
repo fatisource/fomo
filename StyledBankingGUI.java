@@ -1,14 +1,60 @@
-// Required imports
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 
 public class StyledBankingGUI {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new BankingSystemGUI().createAndShowGUI());
+    }
+}
+
+enum AccountType {
+    SAVINGS, CURRENT;
+
+    @Override
+    public String toString() {
+        return name().charAt(0) + name().substring(1).toLowerCase();
+    }
+}
+
+class Account {
+    final int accountNumber;
+    final String name;
+    final AccountType accountType;
+    double balance = 0.0;
+    final List<String> transactions = new ArrayList<>();
+
+    public Account(int accNum, String name, AccountType type) {
+        this.accountNumber = accNum;
+        this.name = name;
+        this.accountType = type;
+        addTransaction("Account opened with balance ₹0.00");
+    }
+
+    public void deposit(double amount) throws Exception {
+        if (amount <= 0) throw new Exception("Amount must be positive");
+        balance += amount;
+        addTransaction("Deposited ₹" + String.format("%.2f", amount) + 
+            " | New Balance ₹" + String.format("%.2f", balance));
+    }
+
+    public void withdraw(double amount) throws Exception {
+        if (amount <= 0) throw new Exception("Amount must be positive");
+        if (amount > balance) throw new Exception("Insufficient balance");
+        balance -= amount;
+        addTransaction("Withdrew ₹" + String.format("%.2f", amount) + 
+            " | New Balance ₹" + String.format("%.2f", balance));
+    }
+
+    private void addTransaction(String message) {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        transactions.add("[" + timestamp + "] " + message);
     }
 }
 
@@ -17,22 +63,24 @@ class BankingSystemGUI {
     private JTable table;
     private JTextArea transactionArea;
     private JTextField nameField, accNumField, amountField, searchField;
-    private JComboBox<String> typeCombo;
+    private JComboBox<AccountType> typeCombo;
     private DefaultTableModel tableModel;
 
-    private LinkedList<Account> accounts = new LinkedList<>(); // Changed to LinkedList
+    private final Map<Integer, Account> accounts = new HashMap<>();
 
     private final Color PRIMARY_COLOR = new Color(70, 130, 180); // Steel Blue
     private final Color LIGHT_GREY = new Color(240, 240, 240);
     private final Font TITLE_FONT = new Font("Arial", Font.BOLD, 14);
 
     public void createAndShowGUI() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {}
+
         frame = new JFrame("Banking System");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(950, 650);
+        frame.setSize(1000, 700);
         frame.setLayout(new BorderLayout(10, 10));
-
-        UIManager.put("OptionPane.messageFont", new Font("Arial", Font.PLAIN, 14));
 
         createInputPanel();
         createAccountTable();
@@ -45,20 +93,17 @@ class BankingSystemGUI {
         JPanel inputPanel = new JPanel(new GridLayout(0, 2, 5, 5));
         inputPanel.setBackground(LIGHT_GREY);
         inputPanel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
-            "Account Operations", 0, 0, TITLE_FONT, Color.BLACK));
+                BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
+                "Account Operations", TitledBorder.LEFT, TitledBorder.TOP, TITLE_FONT, Color.BLACK));
 
-        accNumField = createLabeledTextField(inputPanel, "Account Number:");
-        nameField = createLabeledTextField(inputPanel, "Customer Name:");
-
+        accNumField = createLabeledTextField(inputPanel, "Account Number:", "Enter unique account number (numbers only)");
+        nameField = createLabeledTextField(inputPanel, "Customer Name:", "Enter customer name");
         JLabel typeLabel = new JLabel("Account Type:");
-        typeLabel.setForeground(Color.BLACK);
-        typeCombo = new JComboBox<>(new String[]{"Savings", "Current"});
-        typeCombo.setForeground(Color.BLACK);
+        typeCombo = new JComboBox<>(AccountType.values());
+        typeCombo.setToolTipText("Choose account type");
         inputPanel.add(wrapInPanel(typeLabel));
         inputPanel.add(wrapInPanel(typeCombo));
-
-        amountField = createLabeledTextField(inputPanel, "Amount:");
+        amountField = createLabeledTextField(inputPanel, "Amount:", "Enter the amount for deposit/withdrawal");
 
         JButton createBtn = createButton("Create Account", e -> createAccount());
         JButton depositBtn = createButton("Deposit", e -> deposit());
@@ -66,16 +111,16 @@ class BankingSystemGUI {
         JButton clearBtn = createButton("Clear", e -> clearFields());
 
         searchField = new JTextField(15);
-        searchField.setForeground(Color.BLACK);
+        searchField.setToolTipText("Search by account number or name");
         searchField.addKeyListener(new KeyAdapter() {
             public void keyReleased(KeyEvent e) {
                 filterAccounts(searchField.getText());
             }
         });
 
-        inputPanel.add(wrapInPanel(new JLabel("Search:"))).setForeground(Color.BLACK);
+        JLabel searchLabel = new JLabel("Search:");
+        inputPanel.add(wrapInPanel(searchLabel));
         inputPanel.add(wrapInPanel(searchField));
-
         inputPanel.add(createBtn);
         inputPanel.add(depositBtn);
         inputPanel.add(withdrawBtn);
@@ -86,38 +131,38 @@ class BankingSystemGUI {
 
     private void createAccountTable() {
         String[] columns = {"Account #", "Name", "Type", "Balance"};
-        tableModel = new DefaultTableModel(columns, 0);
+        tableModel = new DefaultTableModel(columns, 0) {
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
         table = new JTable(tableModel);
-        table.setForeground(Color.BLACK);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.getSelectionModel().addListSelectionListener(e -> showTransactions());
 
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
-            "Accounts", 0, 0, TITLE_FONT, Color.BLACK));
+                BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
+                "Accounts", TitledBorder.LEFT, TitledBorder.TOP, TITLE_FONT, Color.BLACK));
 
         frame.add(scrollPane, BorderLayout.CENTER);
     }
 
     private void createTransactionPanel() {
-        transactionArea = new JTextArea(8, 30);
-        transactionArea.setForeground(Color.BLACK);
+        transactionArea = new JTextArea(10, 50);
         transactionArea.setEditable(false);
+        transactionArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
 
         JScrollPane scrollPane = new JScrollPane(transactionArea);
         scrollPane.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
-            "Transactions", 0, 0, TITLE_FONT, Color.BLACK));
+                BorderFactory.createLineBorder(PRIMARY_COLOR, 2),
+                "Transactions", TitledBorder.LEFT, TitledBorder.TOP, TITLE_FONT, Color.BLACK));
 
         frame.add(scrollPane, BorderLayout.SOUTH);
     }
 
-    private JTextField createLabeledTextField(JPanel panel, String labelText) {
+    private JTextField createLabeledTextField(JPanel panel, String labelText, String tooltip) {
         JLabel label = new JLabel(labelText);
-        label.setForeground(Color.BLACK);
         JTextField textField = new JTextField(15);
-        textField.setForeground(Color.BLACK);
+        textField.setToolTipText(tooltip);
         panel.add(wrapInPanel(label));
         panel.add(wrapInPanel(textField));
         return textField;
@@ -134,51 +179,79 @@ class BankingSystemGUI {
         JButton btn = new JButton(text);
         btn.setBackground(PRIMARY_COLOR);
         btn.setForeground(Color.WHITE);
+        btn.setFocusPainted(false);
         btn.addActionListener(listener);
+        btn.setToolTipText(text);
         return btn;
     }
 
     private void createAccount() {
         try {
-            int accNum = Integer.parseInt(accNumField.getText());
+            int accNum = parseIntField(accNumField, "Account Number");
             String name = nameField.getText().trim();
-            String type = (String) typeCombo.getSelectedItem();
-
             if (name.isEmpty()) throw new Exception("Name is required");
+            if (accounts.containsKey(accNum)) throw new Exception("Account already exists");
 
-            for (Account a : accounts) if (a.accountNumber == accNum) throw new Exception("Account exists");
-
+            AccountType type = (AccountType) typeCombo.getSelectedItem();
             Account account = new Account(accNum, name, type);
-            accounts.add(account);
+            accounts.put(accNum, account);
             updateTable();
             JOptionPane.showMessageDialog(frame, "Account Created Successfully");
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(frame, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            showError(ex.getMessage());
         }
     }
 
     private void deposit() {
         try {
-            int accNum = Integer.parseInt(accNumField.getText());
-            double amt = Double.parseDouble(amountField.getText());
-            Account acc = find(accNum);
+            int accNum = parseIntField(accNumField, "Account Number");
+            double amt = parseDoubleField(amountField, "Amount");
+            Account acc = findAccount(accNum);
             acc.deposit(amt);
             updateTable();
+            showTransactionsForAccount(acc);
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(frame, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            showError(ex.getMessage());
         }
     }
 
     private void withdraw() {
         try {
-            int accNum = Integer.parseInt(accNumField.getText());
-            double amt = Double.parseDouble(amountField.getText());
-            Account acc = find(accNum);
+            int accNum = parseIntField(accNumField, "Account Number");
+            double amt = parseDoubleField(amountField, "Amount");
+            Account acc = findAccount(accNum);
             acc.withdraw(amt);
             updateTable();
+            showTransactionsForAccount(acc);
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(frame, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            showError(ex.getMessage());
         }
+    }
+
+    private int parseIntField(JTextField field, String name) throws Exception {
+        String text = field.getText().trim();
+        if (text.isEmpty()) throw new Exception(name + " is required");
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException e) {
+            throw new Exception(name + " must be a number");
+        }
+    }
+
+    private double parseDoubleField(JTextField field, String name) throws Exception {
+        String text = field.getText().trim();
+        if (text.isEmpty()) throw new Exception(name + " is required");
+        try {
+            return Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            throw new Exception(name + " must be a number");
+        }
+    }
+
+    private Account findAccount(int accNum) throws Exception {
+        Account acc = accounts.get(accNum);
+        if (acc == null) throw new Exception("Account not found");
+        return acc;
     }
 
     private void clearFields() {
@@ -191,62 +264,47 @@ class BankingSystemGUI {
         updateTable();
     }
 
-    private Account find(int accNum) throws Exception {
-        for (Account a : accounts) if (a.accountNumber == accNum) return a;
-        throw new Exception("Account not found");
-    }
-
     private void showTransactions() {
         int row = table.getSelectedRow();
         if (row >= 0) {
             int accNum = (int) tableModel.getValueAt(row, 0);
-            try {
-                Account acc = find(accNum);
-                transactionArea.setText(String.join("\n", acc.transactions));
-            } catch (Exception ignored) {}
+            Account acc = accounts.get(accNum);
+            if (acc != null) showTransactionsForAccount(acc);
         }
+    }
+
+    private void showTransactionsForAccount(Account acc) {
+        StringBuilder sb = new StringBuilder();
+        for (String t : acc.transactions)
+            sb.append(t).append("\n");
+        transactionArea.setText(sb.toString());
     }
 
     private void updateTable() {
+        String keyword = searchField.getText().trim();
         tableModel.setRowCount(0);
-        for (Account acc : accounts) {
-            tableModel.addRow(new Object[]{acc.accountNumber, acc.name, acc.accountType, String.format("₹%.2f", acc.balance)});
-        }
-    }
-
-    private void filterAccounts(String keyword) {
-        tableModel.setRowCount(0);
-        for (Account acc : accounts) {
-            if (String.valueOf(acc.accountNumber).contains(keyword) || acc.name.toLowerCase().contains(keyword.toLowerCase())) {
-                tableModel.addRow(new Object[]{acc.accountNumber, acc.name, acc.accountType, String.format("₹%.2f", acc.balance)});
+        for (Account acc : accounts.values()) {
+            if (keyword.isEmpty() || matchesKeyword(acc, keyword)) {
+                tableModel.addRow(new Object[]{
+                        acc.accountNumber,
+                        acc.name,
+                        acc.accountType,
+                        String.format("₹%.2f", acc.balance)
+                });
             }
         }
     }
-}
 
-class Account {
-    int accountNumber;
-    String name;
-    String accountType;
-    double balance = 0.0;
-    LinkedList<String> transactions = new LinkedList<>(); // Changed to LinkedList
-
-    public Account(int accNum, String name, String type) {
-        this.accountNumber = accNum;
-        this.name = name;
-        this.accountType = type;
-        transactions.add("Account opened with balance ₹0.00");
+    private boolean matchesKeyword(Account acc, String keyword) {
+        return String.valueOf(acc.accountNumber).contains(keyword) ||
+               acc.name.toLowerCase().contains(keyword.toLowerCase());
     }
 
-    public void deposit(double amount) throws Exception {
-        if (amount <= 0) throw new Exception("Amount must be positive");
-        balance += amount;
-        transactions.add("Deposited ₹" + amount + " | New Balance ₹" + balance);
+    private void filterAccounts(String keyword) {
+        updateTable();
     }
 
-    public void withdraw(double amount) throws Exception {
-        if (amount > balance) throw new Exception("Insufficient balance");
-        balance -= amount;
-        transactions.add("Withdrew ₹" + amount + " | New Balance ₹" + balance);
+    private void showError(String message) {
+        JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
     }
 }
